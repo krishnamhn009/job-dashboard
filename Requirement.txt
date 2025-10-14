@@ -1,0 +1,8 @@
+streamlit==1.26.1
+pandas==2.1.1
+pyodbc==4.0.39
+aioodbc==0.3.5
+azure-identity==1.14.0
+azure-keyvault-secrets==4.9.0
+
+
