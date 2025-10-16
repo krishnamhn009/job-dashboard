@@ -1,65 +1,72 @@
-# job_dashboard_azure_logging.py
+# job_dashboard_azure_akv.py
 import streamlit as st
 import pandas as pd
 import asyncio
 import aioodbc
 import time
+from datetime import datetime
 from azure.identity.aio import DefaultAzureCredential
 from azure.keyvault.secrets.aio import SecretClient
-from datetime import datetime
 from opentelemetry import trace, _logs
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.instrumentation.streamlit import StreamlitInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.azure.monitor import AzureMonitorTraceExporter, AzureMonitorLogExporter
+from opentelemetry.instrumentation.streamlit import StreamlitInstrumentor
 
 # -----------------------
-# OpenTelemetry Azure Monitor
+# Streamlit UI setup
 # -----------------------
-resource = Resource(attributes={SERVICE_NAME: "JobDashboardAzure"})
-tracer_provider = TracerProvider(resource=resource)
-azure_trace_exporter = AzureMonitorTraceExporter(
-    connection_string=st.secrets["app_insights"]["connection_string"]
-)
-tracer_provider.add_span_processor(BatchSpanProcessor(azure_trace_exporter))
-trace.set_tracer_provider(tracer_provider)
-tracer = trace.get_tracer(__name__)
-
-logger_provider = LoggerProvider(resource=resource)
-azure_log_exporter = AzureMonitorLogExporter(
-    connection_string=st.secrets["app_insights"]["connection_string"]
-)
-logger_provider.add_log_record_processor(BatchLogRecordProcessor(azure_log_exporter))
-_logs.set_logger_provider(logger_provider)
-logger = _logs.get_logger("JobDashboardAzureLogger", "1.0.0")
-
-StreamlitInstrumentor().instrument()
-
-# -----------------------
-# Streamlit UI
-# -----------------------
-st.set_page_config(page_title="Job Dashboard Azure", layout="wide")
-
+st.set_page_config(page_title="Job Dashboard Azure AKV", layout="wide")
 col_title, col_refresh = st.columns([8, 1])
 with col_title:
-    st.title("📊 Job Execution Dashboard (Azure Logging, Auto Refresh 1min)")
+    st.title("📊 Job Execution Dashboard (Azure, AKV, Auto Refresh 1min)")
 with col_refresh:
     if st.button("🔄 Refresh Now"):
         st.experimental_rerun()
 
 # -----------------------
+# Fetch secrets from AKV
+# -----------------------
+async def get_secret_from_akv(secret_name: str):
+    kv_url = st.secrets["keyvault"]["url"]
+    credential = DefaultAzureCredential()
+    client = SecretClient(vault_url=kv_url, credential=credential)
+    secret = await client.get_secret(secret_name)
+    return secret.value
+
+# Get SQL and App Insights connection strings
+sql_conn_str = asyncio.run(get_secret_from_akv(st.secrets["keyvault"]["sql_secret_name"]))
+app_insights_conn_str = asyncio.run(get_secret_from_akv("AppInsightsConnectionString"))
+
+# -----------------------
+# OpenTelemetry Azure Setup
+# -----------------------
+resource = Resource(attributes={SERVICE_NAME: "JobDashboardAzureAKV"})
+
+# Tracer
+tracer_provider = TracerProvider(resource=resource)
+azure_trace_exporter = AzureMonitorTraceExporter(connection_string=app_insights_conn_str)
+tracer_provider.add_span_processor(BatchSpanProcessor(azure_trace_exporter))
+trace.set_tracer_provider(tracer_provider)
+tracer = trace.get_tracer(__name__)
+
+# Logger
+logger_provider = LoggerProvider(resource=resource)
+azure_log_exporter = AzureMonitorLogExporter(connection_string=app_insights_conn_str)
+logger_provider.add_log_record_processor(BatchLogRecordProcessor(azure_log_exporter))
+_logs.set_logger_provider(logger_provider)
+logger = _logs.get_logger("JobDashboardAzureAKVLogger", "1.0.0")
+
+StreamlitInstrumentor().instrument()
+
+# -----------------------
 # Async SQL Connection
 # -----------------------
 async def get_sql_connection():
-    key_vault_url = st.secrets["keyvault"]["url"]
-    secret_name = st.secrets["keyvault"]["sql_secret_name"]
-    credential = DefaultAzureCredential()
-    secret_client = SecretClient(vault_url=key_vault_url, credential=credential)
-    sql_conn_str = await secret_client.get_secret(secret_name)
-    conn = await aioodbc.connect(sql_conn_str.value, autocommit=True)
+    conn = await aioodbc.connect(sql_conn_str, autocommit=True)
     return conn
 
 # -----------------------
