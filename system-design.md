@@ -1,3 +1,61 @@
+# 🧩 Job Dashboard System Design Documentation
+
+## 📘 Overview
+
+The **Job Dashboard Application** provides an interface for users to **monitor, filter, and manage job executions**.  
+It allows users to:
+- View job execution history and details.
+- Sort and filter jobs by columns (Client, Status, etc.).
+- Retry failed jobs directly from the dashboard.
+- Optionally add new jobs for execution.
+
+This system integrates with an **Execution Engine (CTS Managed)** that triggers **PowerAgent** for actual job execution.
+
+---
+
+## ⚙️ Key Features
+
+| Feature | Description |
+|----------|--------------|
+| **Job Monitoring** | Display list of jobs with detailed metadata and execution results. |
+| **Filtering & Sorting** | Enable users to filter by client, status, or execution date and sort columns dynamically. |
+| **Retry Mechanism** | Users can retry failed jobs using a retry icon in the dashboard. |
+| **Add New Job** | Users can create new job requests (optional). |
+| **Secure Connection** | Database connection securely retrieved from **Azure Key Vault**. |
+| **Observability** | All key actions are logged and traced using **OpenTelemetry**. |
+
+---
+
+## 🧱 Architecture Overview
+
+### **High-Level Components**
+
+                 +--------------------------------------+
+                 |     Execution Engine (CTS Managed)    |
+                 |   - Runs jobexecuter.exe              |
+                 |   - Triggers PowerAgent execution     |
+                 +------------------+-------------------+
+                                    |
+                                    v
+                       +---------------------------+
+                       |      PowerAgent System    |
+                       |  - Executes actual jobs   |
+                       |  - Updates SQL Server     |
+                       +-------------+-------------+
+                                     |
+                                     v
+                       +---------------------------+
+                       |       SQL Server DB       |
+                       |  - Jobs table (metadata)  |
+                       |  - Status, message, etc.  |
+                       +-------------+-------------+
+                                     ^
+                                     |
+                       +---------------------------+
+                       |     Streamlit Dashboard    |
+                       |  - View, filter, retry     |
+                       |  - Add new jobs (optional) |
+                       +---------------------------+
 
 ---
 
